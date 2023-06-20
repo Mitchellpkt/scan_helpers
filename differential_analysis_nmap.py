@@ -1,5 +1,6 @@
 import collections
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Set
 
@@ -23,58 +24,48 @@ def parse_nmap_output(filename: Path) -> Dict[str, Set[int]]:
         contents = file.read()
 
     matches = re.findall(
-        r"Nmap scan report for (\S+).*?(\d+)/(tcp|udp)\s+open", contents, re.DOTALL
+        r"Nmap scan report for (\S+).*?(\d+)/(tcp|udp) open", contents, re.DOTALL
     )
-    hosts = collections.defaultdict(set)
+    host_to_ports = collections.defaultdict(set)
 
     for host, port, protocol in matches:
-        # We include the protocol with the port number to distinguish TCP and UDP ports
-        hosts[host].add(f"{port}/{protocol}")
+        host_to_ports[host].add((protocol, int(port)))
 
-    return hosts
+    return host_to_ports
 
 
-def compare_outputs(file1: Path, file2: Path) -> str:
+def compare_outputs_and_log(file1: str, file2: str, log_file: str):
     """
-    Compare the open ports in two Nmap output files and return the differences as a string.
+    Compare two nmap outputs and logs the differences.
 
     Args:
-        file1 (Path): The path to the first Nmap output file.
-        file2 (Path): The path to the second Nmap output file.
+        file1 (str): The path to the first nmap output file.
+        file2 (str): The path to the second nmap output file.
+        log_file (str): The path to the log file.
 
     Returns:
-        A string of differences.
+        None
     """
-    hosts1 = parse_nmap_output(file1)
-    hosts2 = parse_nmap_output(file2)
+    old_hosts = parse_nmap_output(file1)
+    new_hosts = parse_nmap_output(file2)
 
-    diffs = []
-    for host in set(hosts1.keys()) | set(hosts2.keys()):
-        if host not in hosts1:
-            diffs.append(f"New host {host} with open ports: {sorted(hosts2[host])}")
-        elif host not in hosts2:
-            diffs.append(f"Host {host} left, it had open ports: {sorted(hosts1[host])}")
-        else:
-            newly_open = hosts2[host] - hosts1[host]
-            newly_closed = hosts1[host] - hosts2[host]
-            if newly_open:
-                diffs.append(f"Host {host} has newly open ports: {sorted(newly_open)}")
-            if newly_closed:
-                diffs.append(
-                    f"Host {host} has newly closed ports: {sorted(newly_closed)}"
+    with open(log_file, "a") as f:
+        for host, new_ports in new_hosts.items():
+            old_ports = old_hosts.get(host, set())
+
+            if old_ports:
+                for port in new_ports - old_ports:
+                    print(f"New port {port} open on host {host}")
+                    f.write(f"{datetime.now()} - New port {port} open on host {host}\n")
+                for port in old_ports - new_ports:
+                    print(f"Port {port} closed on host {host}")
+                    f.write(f"{datetime.now()} - Port {port} closed on host {host}\n")
+            else:
+                print(f"New host {host} with open ports: {list(new_ports)}")
+                f.write(
+                    f"{datetime.now()} - New host {host} with open ports: {list(new_ports)}\n"
                 )
 
-    return "\n".join(diffs)
-
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) != 3:
-        print("Usage: python3 differential_analysis_nmap.py <file1> <file2>")
-        sys.exit(1)
-
-    file1 = Path(sys.argv[1])
-    file2 = Path(sys.argv[2])
-
-    print(compare_outputs(file1, file2))
+        for host in old_hosts.keys() - new_hosts.keys():
+            print(f"Host {host} is no longer present")
+            f.write(f"{datetime.now()} - Host {host} is no longer present\n")

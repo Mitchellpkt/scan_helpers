@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from differential_analysis_nmap import compare_outputs
+from differential_analysis_nmap import compare_outputs_and_log
 
 
 def continuous_scan(shell_script: str, analysis_func: callable, delay_sec: int = 5):
@@ -20,10 +20,12 @@ def continuous_scan(shell_script: str, analysis_func: callable, delay_sec: int =
     None
     """
     last_two_files = []
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_file = f"./output/continuous_differential_analysis_{timestamp}.txt"
 
     while True:
         # Run the shell script
-        print("Running the nmap scan...")
+        print(f"{datetime.now()} - Running the nmap scan...")
         subprocess.call(["bash", shell_script])
 
         # Get the list of output files sorted by modification time
@@ -35,23 +37,16 @@ def continuous_scan(shell_script: str, analysis_func: callable, delay_sec: int =
 
             # Run the analysis if there is a new scan file
             if new_last_two_files != last_two_files:
-                print("Running the analysis...")
-                diff_results = analysis_func(
-                    str(new_last_two_files[0]), str(new_last_two_files[1])
+                print(f"{datetime.now()} - Running the analysis...")
+                analysis_func(
+                    str(new_last_two_files[0]), str(new_last_two_files[1]), log_file
                 )
                 last_two_files = new_last_two_files
 
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                log_file = f"./output/continuous_differential_analysis_{timestamp}.txt"
-
-                with open(log_file, "a") as f:
-                    f.write(diff_results + "\n")
-                print(diff_results)
-
         # Sleep for the delay duration
-        print(f"Sleeping for {delay_sec} seconds...")
+        print(f"{datetime.now()} - Sleeping for {delay_sec} seconds...")
         time.sleep(delay_sec)
 
 
 if __name__ == "__main__":
-    continuous_scan("scan_network.sh", compare_outputs)
+    continuous_scan("scan_network.sh", compare_outputs_and_log)
